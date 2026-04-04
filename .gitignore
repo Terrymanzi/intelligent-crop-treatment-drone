@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.env/
+
+# Model checkpoints
+models/dqn/*.zip
+models/ppo/*.zip
+models/a2c/*.zip
+models/reinforce/*.pt
+models/**/*.zip
+models/**/*.pt
+
+# Logs
+results/logs/
+*.log
+
+# TensorBoard
+runs/
+
+# Plots (generated)
+results/plots/*.png
+results/plots/*.pdf
+
+# Unity build artifacts
+unity_project/Builds/
+unity_project/Library/
+unity_project/Temp/
+unity_project/Logs/
+unity_project/obj/
+unity_project/UserSettings/
+*.cginc
+*.unitypackage
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+# git commit temp repo folders
+/models
+/results
+/scripts
+/training
+/unity_project
