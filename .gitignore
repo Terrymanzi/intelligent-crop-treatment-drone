@@ -59,6 +59,6 @@ Thumbs.db
 # git commit temp repo folders
 /models
 /results
-/scripts
+# /scripts
 /training
 /unity_project

@@ -91,8 +91,13 @@ Train any of the four RL algorithms:
 # DQN
 python -m training.dqn_training --timesteps 500000
 
-# PPO
-python -m training.ppo_training --timesteps 500000
+# PPO (my best ideal training strategy)
+# increase up to least "2M timesteps"
+# Use vectorized environments (huge improvement)
+# Increase n_steps to "4096" (2x)
+# Tune entropy for exploration to "0.02" (2x)
+# increase batch size to 128 (2x)
+python -m training.ppo_training --timesteps 2000000
 
 # A2C
 python -m training.a2c_training --timesteps 500000
