@@ -29,30 +29,30 @@ class EnvConfig:
     # Farm layout
     grid_size: int = 5
     num_crops: int = 25
-    unhealthy_ratio: float = 0.3
+    unhealthy_ratio: float = 0.5
 
     # Episode limits
-    max_steps: int = 200
+    max_steps: int = 100
 
     # Observation and action space
-    # Observation: drone_x, drone_y, drone_z, pesticide_remaining,
+    # Observation: drone_x, drone_y, pesticide_remaining,
     #              + crop_health for each cell (0=healthy, 1=unhealthy, 2=treated)
-    observation_size: int = 29  # 4 (drone state) + 25 (crop states)
-    num_actions: int = 7  # 0-5: move (±x, ±y, ±z), 6: spray
+    # (z-axis removed — drone operates on a flat 2D grid)
+    observation_size: int = 28  # 3 (drone state) + 25 (crop states)
+    num_actions: int = 5  # 0: +x, 1: -x, 2: +y, 3: -y, 4: spray
 
     # Drone resources
-    pesticide_capacity: int = 15
+    pesticide_capacity: int = 20
 
     # Reward shaping
-    movement_penalty: float = -0.1
-    spray_reward: float = 10.0
-    spray_penalty: float = -5.0
-    completion_bonus: float = 50.0
+    movement_penalty: float = -0.05
+    spray_reward: float = 15.0
+    spray_penalty: float = -2.0
+    completion_bonus: float = 100.0
 
     # Action mapping for readability
     action_names: List[str] = field(default_factory=lambda: [
         "move_+x", "move_-x",
         "move_+y", "move_-y",
-        "move_+z", "move_-z",
         "spray",
     ])

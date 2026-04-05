@@ -20,7 +20,7 @@ import numpy as np
 # Allow running from the project root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from environment.unity_env_wrapper import make_env
+from environment.env_wrapper import make_env
 from environment.config import EnvConfig
 
 

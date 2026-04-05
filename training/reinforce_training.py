@@ -23,19 +23,25 @@ import torch.optim as optim
 from torch.distributions import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
-from environment.unity_env_wrapper import make_env
+from environment.env_wrapper import make_env
 from environment.config import EnvConfig
-from training.utils import MODELS_DIR, LOG_DIR
+from training.utils import MODELS_DIR, LOG_DIR, RESULTS_DIR
 
-# ---- Hyperparameters ----
+# ---- Optimised Hyperparameters ----
+# REINFORCE with larger network, entropy bonus for exploration,
+# gradient clipping for stability, and more episodes for convergence.
+# gamma=0.99 matches the on-policy SB3 scripts; 10k episodes gives
+# enough samples for the vanilla PG estimator to converge.
 HYPERPARAMS = {
-    "learning_rate": 1e-3,
+    "learning_rate": 5e-4,
     "gamma": 0.99,
-    "hidden_size": 128,
-    "num_episodes": 2000,
-    "max_steps_per_episode": 200,
-    "log_interval": 50,
-    "save_interval": 500,
+    "hidden_size": 256,
+    "num_episodes": 10_000,
+    "max_steps_per_episode": 100,
+    "log_interval": 100,
+    "save_interval": 1000,
+    "entropy_coef": 0.05,
+    "max_grad_norm": 0.5,
 }
 
 ALGO_NAME = "reinforce"
@@ -111,6 +117,9 @@ def train(
     Returns:
         The trained policy network.
     """
+    import csv
+    from datetime import datetime
+
     torch.manual_seed(seed)
     np.random.seed(seed)
 
@@ -135,18 +144,28 @@ def train(
 
     best_avg_reward = -float("inf")
     reward_history: List[float] = []
+    treated_history: List[int] = []
+    length_history: List[int] = []
 
     print(f"[REINFORCE] Starting training for {num_episodes} episodes...")
 
     for episode in range(1, num_episodes + 1):
         obs, _ = env.reset(seed=seed + episode)
         log_probs: List[torch.Tensor] = []
+        entropies: List[torch.Tensor] = []
         rewards: List[float] = []
 
         for _ in range(HYPERPARAMS["max_steps_per_episode"]):
-            action, log_prob = policy.select_action(obs)
-            obs, reward, terminated, truncated, info = env.step(action)
+            state_tensor = torch.FloatTensor(obs).unsqueeze(0)
+            logits = policy(state_tensor)
+            dist = Categorical(logits=logits)
+            action = dist.sample()
+            log_prob = dist.log_prob(action)
+            entropy = dist.entropy()
+
+            obs, reward, terminated, truncated, info = env.step(action.item())
             log_probs.append(log_prob)
+            entropies.append(entropy)
             rewards.append(reward)
 
             if terminated or truncated:
@@ -162,30 +181,38 @@ def train(
                 returns_tensor.std() + 1e-8
             )
 
-        # Policy gradient loss
+        # Policy gradient loss with entropy bonus
         policy_loss = []
-        for log_prob, G in zip(log_probs, returns_tensor):
-            policy_loss.append(-log_prob * G)
+        for log_prob, ent, G in zip(log_probs, entropies, returns_tensor):
+            policy_loss.append(-log_prob * G - HYPERPARAMS["entropy_coef"] * ent)
 
         optimizer.zero_grad()
         loss = torch.stack(policy_loss).sum()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(
+            policy.parameters(), HYPERPARAMS["max_grad_norm"]
+        )
         optimizer.step()
 
         episode_reward = sum(rewards)
         reward_history.append(episode_reward)
+        treated_history.append(info.get("crops_treated", 0))
+        length_history.append(len(rewards))
 
         # TensorBoard logging
         writer.add_scalar("train/episode_reward", episode_reward, episode)
         writer.add_scalar("train/episode_length", len(rewards), episode)
         writer.add_scalar("train/loss", loss.item(), episode)
+        writer.add_scalar("env/crops_treated", info.get("crops_treated", 0), episode)
 
         # Periodic logging
         if episode % HYPERPARAMS["log_interval"] == 0:
             avg_reward = np.mean(reward_history[-HYPERPARAMS["log_interval"]:])
+            avg_treated = np.mean(treated_history[-HYPERPARAMS["log_interval"]:])
             print(
                 f"  Episode {episode}/{num_episodes} | "
                 f"Avg Reward: {avg_reward:.2f} | "
+                f"Avg Treated: {avg_treated:.1f} | "
                 f"Loss: {loss.item():.4f}"
             )
             writer.add_scalar("train/avg_reward", avg_reward, episode)
@@ -205,6 +232,59 @@ def train(
     final_path = save_dir / "reinforce_final.pt"
     torch.save(policy.state_dict(), final_path)
     print(f"[REINFORCE] Final model saved to {final_path}")
+
+    # Evaluate final model and save CSV results
+    policy.eval()
+    eval_rewards = []
+    eval_treated = []
+    eval_lengths = []
+    eval_env = make_env(config=config)
+
+    for ep in range(20):
+        obs, _ = eval_env.reset()
+        ep_reward = 0.0
+        steps = 0
+        done = False
+        while not done:
+            with torch.no_grad():
+                action, _ = policy.select_action(obs)
+            obs, reward, terminated, truncated, info = eval_env.step(action)
+            ep_reward += reward
+            steps += 1
+            done = terminated or truncated
+        eval_rewards.append(ep_reward)
+        eval_treated.append(info.get("crops_treated", 0))
+        eval_lengths.append(steps)
+    eval_env.close()
+
+    os.makedirs(str(RESULTS_DIR), exist_ok=True)
+    csv_path = RESULTS_DIR / "training_results.csv"
+    file_exists = csv_path.exists()
+    with open(csv_path, "a", newline="") as f:
+        w = csv.writer(f)
+        if not file_exists:
+            w.writerow([
+                "algorithm", "timestamp", "total_episodes",
+                "mean_reward", "std_reward", "mean_crops_treated",
+                "mean_episode_length", "best_reward",
+                "treatment_accuracy_pct", "hyperparameters",
+            ])
+        total_unhealthy = int(config.num_crops * config.unhealthy_ratio)
+        accuracy = (np.mean(eval_treated) / total_unhealthy * 100) if total_unhealthy > 0 else 0
+        hp_str = "; ".join(f"{k}={v}" for k, v in HYPERPARAMS.items())
+        w.writerow([
+            ALGO_NAME,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            num_episodes,
+            f"{np.mean(eval_rewards):.2f}",
+            f"{np.std(eval_rewards):.2f}",
+            f"{np.mean(eval_treated):.1f}",
+            f"{np.mean(eval_lengths):.1f}",
+            f"{np.max(eval_rewards):.2f}",
+            f"{accuracy:.1f}",
+            hp_str,
+        ])
+    print(f"[REINFORCE] Results appended to {csv_path}")
 
     writer.close()
     env.close()

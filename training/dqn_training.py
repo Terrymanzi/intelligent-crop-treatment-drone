@@ -20,24 +20,30 @@ from training.utils import (
     TensorBoardLogCallback,
     get_env,
     get_eval_callback,
+    save_training_results_csv,
 )
 
-# ---- Hyperparameters ----
+# ---- Optimised Hyperparameters ----
+# DQN tuned for the discrete crop grid with proximity shaping.
+# Longer exploration fraction ensures the agent discovers spray rewards
+# before committing to a greedy policy.
 HYPERPARAMS = {
-    "learning_rate": 1e-3,
-    "buffer_size": 200_000,
-    "learning_starts": 10000,
-    "batch_size": 64,
-    # "tau": 0.005, not needed, redundant!
+    "learning_rate": 5e-4,
+    "buffer_size": 100_000,
+    "learning_starts": 10_000,
+    "batch_size": 128,
+    "tau": 1.0,
     "gamma": 0.99,
     "train_freq": 4,
-    "target_update_interval": 1000,
+    "gradient_steps": 1,
+    "target_update_interval": 500,
     "exploration_fraction": 0.5,
     "exploration_initial_eps": 1.0,
-    "exploration_final_eps": 0.05,
+    "exploration_final_eps": 0.02,
+    "policy_kwargs": dict(net_arch=[256, 256]),
 }
 
-TOTAL_TIMESTEPS = 100_000
+TOTAL_TIMESTEPS = 1_000_000
 ALGO_NAME = "dqn"
 
 
@@ -81,6 +87,9 @@ def train(
     final_path = str(MODELS_DIR / ALGO_NAME / "dqn_final")
     model.save(final_path)
     print(f"[DQN] Final model saved to {final_path}")
+
+    # Evaluate and save results to CSV
+    save_training_results_csv(model, ALGO_NAME, total_timesteps, HYPERPARAMS)
 
     env.close()
     return model

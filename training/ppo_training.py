@@ -21,24 +21,30 @@ from training.utils import (
     TensorBoardLogCallback,
     get_env,
     get_eval_callback,
+    save_training_results_csv,
 )
 
-# ---- Hyperparameters ----
+# ---- Optimised Hyperparameters ----
+# Tuned for the 5x5 crop grid with proximity shaping.
+# Higher entropy keeps exploration alive while the agent learns to
+# navigate toward sick crops and spray them within 100 steps.
 HYPERPARAMS = {
-    "learning_rate": 3e-4,
-    "n_steps": 4096,
+    "learning_rate": 2.5e-4,
+    "n_steps": 512,
     "batch_size": 128,
     "n_epochs": 10,
     "gamma": 0.99,
     "gae_lambda": 0.95,
     "clip_range": 0.2,
-    "ent_coef": 0.02,
+    "ent_coef": 0.05,
     "vf_coef": 0.5,
     "max_grad_norm": 0.5,
+    "policy_kwargs": dict(net_arch=dict(pi=[256, 256], vf=[256, 256])),
 }
 
-TOTAL_TIMESTEPS = 100_000
+TOTAL_TIMESTEPS = 1_000_000
 ALGO_NAME = "ppo"
+N_ENVS = 8
 
 
 def train(
@@ -54,7 +60,7 @@ def train(
     Returns:
         The trained PPO model.
     """
-    env = make_vec_env(get_env, n_envs=8)
+    env = make_vec_env(get_env, n_envs=N_ENVS)
     log_path = str(LOG_DIR / ALGO_NAME)
     os.makedirs(log_path, exist_ok=True)
 
@@ -81,6 +87,9 @@ def train(
     final_path = str(MODELS_DIR / ALGO_NAME / "ppo_final")
     model.save(final_path)
     print(f"[PPO] Final model saved to {final_path}")
+
+    # Evaluate and save results to CSV
+    save_training_results_csv(model, ALGO_NAME, total_timesteps, HYPERPARAMS)
 
     env.close()
     return model

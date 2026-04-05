@@ -85,21 +85,21 @@ class CropTreatmentEnv(gym.Env):
         0 = healthy, 1 = unhealthy, 2 = treated.
 
     Drone state:
-        Position (x, y) on the grid, altitude z (clamped 0-3), and remaining
-        pesticide supply.
+        Position (x, y) on the grid and remaining pesticide supply.
 
-    Actions (Discrete 7):
+    Actions (Discrete 5):
         0: move +x   1: move -x
         2: move +y   3: move -y
-        4: move +z   5: move -z
-        6: spray pesticide on current cell
+        4: spray pesticide on current cell
 
-    Observation:
-        Flattened float32 vector: [x, y, z, pesticide, *crop_states].
+    Observation (normalised to [0, 1]):
+        Flattened float32 vector: [x/gs, y/gs, pesticide/cap, *crop_states/2].
 
     Reward:
-        -0.1 per step, +10 spray unhealthy, -5 spray healthy/treated,
-        +50 when all unhealthy crops are treated.
+        -0.05 per step, +15 spray unhealthy, -2 spray healthy/treated,
+        +100 when all unhealthy crops are treated.
+        Proximity shaping: +0.5 per Manhattan-distance unit closer to
+        nearest unhealthy crop, -0.3 per unit farther.
 
     Termination:
         All unhealthy crops treated **or** max steps reached (truncation).
@@ -112,39 +112,33 @@ class CropTreatmentEnv(gym.Env):
         config: Optional[EnvConfig] = None,
         render_mode: Optional[str] = None,
     ) -> None:
-        """Initialise the environment.
-
-        Args:
-            config: Environment parameters. Uses defaults if None.
-            render_mode: 'human' to open a Pygame window, 'ansi' for text,
-                         or None for no rendering.
-        """
         super().__init__()
         self.config = config or EnvConfig()
         self.render_mode = render_mode
 
-        # Gymnasium spaces
+        # Gymnasium spaces — observations are normalised to [0, 1]
         self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
+            low=0.0,
+            high=1.0,
             shape=(self.config.observation_size,),
             dtype=np.float32,
         )
         self.action_space = spaces.Discrete(self.config.num_actions)
 
         # Internal state (properly initialised in reset)
-        self._drone_pos = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+        self._drone_pos = np.array([0.0, 0.0], dtype=np.float32)
         self._pesticide: int = self.config.pesticide_capacity
         self._crop_states: np.ndarray = np.zeros(
             self.config.num_crops, dtype=np.float32
         )
         self._step_count: int = 0
         self._total_unhealthy: int = 0
+        self._prev_min_dist: float = 0.0
 
         # Pygame state (lazy-initialised)
-        self._screen: Optional[pygame.Surface] = None
-        self._clock: Optional[pygame.time.Clock] = None
-        self._font: Optional[pygame.font.Font] = None
+        self._screen: Optional["pygame.Surface"] = None
+        self._clock: Optional["pygame.time.Clock"] = None
+        self._font: Optional["pygame.font.Font"] = None
 
     # ------------------------------------------------------------------
     # Gymnasium API
@@ -156,19 +150,10 @@ class CropTreatmentEnv(gym.Env):
         seed: Optional[int] = None,
         options: Optional[Dict[str, Any]] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Reset the farm and return the initial observation.
-
-        Args:
-            seed: Optional random seed for reproducibility.
-            options: Unused; kept for Gymnasium compatibility.
-
-        Returns:
-            Tuple of (observation, info dict).
-        """
         super().reset(seed=seed)
         rng = self.np_random
 
-        self._drone_pos = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+        self._drone_pos = np.array([0.0, 0.0], dtype=np.float32)
         self._pesticide = self.config.pesticide_capacity
         self._step_count = 0
 
@@ -181,19 +166,14 @@ class CropTreatmentEnv(gym.Env):
         self._crop_states[unhealthy_indices] = 1.0
         self._total_unhealthy = num_unhealthy
 
+        # Initialise proximity tracking
+        self._prev_min_dist = self._min_dist_to_unhealthy()
+
         return self._get_obs(), self._get_info()
 
     def step(
         self, action: int
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        """Execute one action and return the outcome.
-
-        Args:
-            action: Discrete action index (0-6).
-
-        Returns:
-            Tuple of (observation, reward, terminated, truncated, info).
-        """
         self._step_count += 1
         reward = self.config.movement_penalty
         terminated = False
@@ -201,7 +181,18 @@ class CropTreatmentEnv(gym.Env):
 
         self._update_state(action)
 
-        if action == 6:
+        # --- Proximity shaping reward ---
+        new_min_dist = self._min_dist_to_unhealthy()
+        if new_min_dist is not None and self._prev_min_dist is not None:
+            dist_delta = self._prev_min_dist - new_min_dist  # positive = got closer
+            if dist_delta > 0:
+                reward += 0.5 * dist_delta
+            elif dist_delta < 0:
+                reward += 0.3 * dist_delta  # negative value (penalty)
+        self._prev_min_dist = new_min_dist
+
+        # --- Spray action ---
+        if action == 4:
             reward += self._spray()
 
         # Check completion — all unhealthy crops treated
@@ -216,21 +207,14 @@ class CropTreatmentEnv(gym.Env):
         return self._get_obs(), reward, terminated, truncated, self._get_info()
 
     def render(self) -> Optional[str]:
-        """Render the current environment state.
-
-        Returns:
-            Grid string when render_mode is 'ansi', None otherwise.
-        """
         if self.render_mode == "human":
             self._render_frame()
             return None
         elif self.render_mode == "ansi":
             return self._render_ansi()
-        # No rendering when render_mode is None
         return None
 
     def close(self) -> None:
-        """Release rendering resources."""
         if self._screen is not None:
             pygame.display.quit()
             pygame.quit()
@@ -243,11 +227,6 @@ class CropTreatmentEnv(gym.Env):
     # ------------------------------------------------------------------
 
     def _update_state(self, action: int) -> None:
-        """Apply movement actions to the drone position.
-
-        Args:
-            action: Discrete action index.
-        """
         gs = self.config.grid_size
         if action == 0:    # +x
             self._drone_pos[0] = min(self._drone_pos[0] + 1, gs - 1)
@@ -257,21 +236,35 @@ class CropTreatmentEnv(gym.Env):
             self._drone_pos[1] = min(self._drone_pos[1] + 1, gs - 1)
         elif action == 3:  # -y
             self._drone_pos[1] = max(self._drone_pos[1] - 1, 0)
-        elif action == 4:  # +z
-            self._drone_pos[2] = min(self._drone_pos[2] + 1, 3)
-        elif action == 5:  # -z
-            self._drone_pos[2] = max(self._drone_pos[2] - 1, 0)
+        # action == 4 is spray, handled separately
+
+    # ------------------------------------------------------------------
+    # Proximity helper
+    # ------------------------------------------------------------------
+
+    def _min_dist_to_unhealthy(self) -> Optional[float]:
+        """Return Manhattan distance from drone to the nearest unhealthy crop,
+        or None if no unhealthy crops remain."""
+        unhealthy_indices = np.where(self._crop_states == 1.0)[0]
+        if len(unhealthy_indices) == 0:
+            return None
+        gs = self.config.grid_size
+        dx = self._drone_pos[0]
+        dy = self._drone_pos[1]
+        min_dist = float("inf")
+        for idx in unhealthy_indices:
+            cx = idx % gs
+            cy = idx // gs
+            dist = abs(dx - cx) + abs(dy - cy)
+            if dist < min_dist:
+                min_dist = dist
+        return min_dist
 
     # ------------------------------------------------------------------
     # Reward helpers
     # ------------------------------------------------------------------
 
     def _spray(self) -> float:
-        """Attempt to spray pesticide on the crop below the drone.
-
-        Returns:
-            Reward delta from the spray action.
-        """
         if self._pesticide <= 0:
             return self.config.spray_penalty
 
@@ -287,42 +280,26 @@ class CropTreatmentEnv(gym.Env):
             self._pesticide -= 1
             return self.config.spray_penalty
 
-    def _compute_reward(self, action: int, spray_reward: float) -> float:
-        """Compute the total reward for a step.
-
-        Args:
-            action: The action taken.
-            spray_reward: Additional reward from spraying.
-
-        Returns:
-            Total reward for this step.
-        """
-        reward = self.config.movement_penalty + spray_reward
-        if not np.any(self._crop_states == 1.0):
-            reward += self.config.completion_bonus
-        return reward
-
     # ------------------------------------------------------------------
     # Observation / info
     # ------------------------------------------------------------------
 
     def _get_obs(self) -> np.ndarray:
-        """Build the flattened observation vector.
+        """Build the normalised observation vector.
 
         Returns:
-            Float32 array: [x, y, z, pesticide, *crop_states].
+            Float32 array in [0, 1]: [x_norm, y_norm, pest_norm, *crop_norm].
         """
-        drone_state = np.array(
-            [*self._drone_pos, float(self._pesticide)], dtype=np.float32
-        )
-        return np.concatenate([drone_state, self._crop_states])
+        gs_max = max(self.config.grid_size - 1, 1)
+        drone_state = np.array([
+            self._drone_pos[0] / gs_max,
+            self._drone_pos[1] / gs_max,
+            float(self._pesticide) / max(self.config.pesticide_capacity, 1),
+        ], dtype=np.float32)
+        crop_norm = self._crop_states / 2.0
+        return np.concatenate([drone_state, crop_norm])
 
     def _get_info(self) -> Dict[str, Any]:
-        """Return auxiliary information about the current state.
-
-        Returns:
-            Dictionary with step count, pesticide, and crop statistics.
-        """
         remaining = int(np.sum(self._crop_states == 1.0))
         treated = int(np.sum(self._crop_states == 2.0))
         return {
@@ -338,7 +315,6 @@ class CropTreatmentEnv(gym.Env):
     # ------------------------------------------------------------------
 
     def _init_pygame(self) -> None:
-        """Lazily initialise Pygame display and resources."""
         if not _PYGAME_AVAILABLE:
             raise ImportError(
                 "pygame is required for human rendering. "
@@ -354,11 +330,9 @@ class CropTreatmentEnv(gym.Env):
         self._font = pygame.font.SysFont("consolas", 20)
 
     def _render_frame(self) -> None:
-        """Draw the current state to the Pygame window."""
         if self._screen is None:
             self._init_pygame()
 
-        # Process Pygame events (required to keep the window responsive)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.close()
@@ -379,7 +353,6 @@ class CropTreatmentEnv(gym.Env):
                 else:
                     color = _COLOR_TREATED
 
-                # Screen y is inverted: grid row 0 at bottom
                 screen_y = (gs - 1 - y) * _CELL_SIZE
                 screen_x = x * _CELL_SIZE
                 rect = pygame.Rect(
@@ -390,13 +363,11 @@ class CropTreatmentEnv(gym.Env):
 
         # Draw grid lines
         for i in range(gs + 1):
-            # Vertical
             pygame.draw.line(
                 self._screen, _COLOR_GRID_LINE,
                 (i * _CELL_SIZE, 0),
                 (i * _CELL_SIZE, gs * _CELL_SIZE),
             )
-            # Horizontal
             pygame.draw.line(
                 self._screen, _COLOR_GRID_LINE,
                 (0, i * _CELL_SIZE),
@@ -413,21 +384,19 @@ class CropTreatmentEnv(gym.Env):
             (drone_screen_x, drone_screen_y),
             _DRONE_RADIUS,
         )
-        # Drone outline for visibility
         pygame.draw.circle(
             self._screen, (0, 0, 0),
             (drone_screen_x, drone_screen_y),
             _DRONE_RADIUS, 2,
         )
 
-        # Info bar
+        # Info bar (no altitude — z-axis removed)
         info_y = gs * _CELL_SIZE + 5
         remaining = int(np.sum(self._crop_states == 1.0))
         treated = int(np.sum(self._crop_states == 2.0))
         info_text = (
             f"Step: {self._step_count}  |  "
             f"Pos: ({dx},{dy})  |  "
-            f"Alt: {int(self._drone_pos[2])}  |  "
             f"Pesticide: {self._pesticide}  |  "
             f"Sick: {remaining}  Treated: {treated}"
         )
@@ -453,11 +422,6 @@ class CropTreatmentEnv(gym.Env):
         self._clock.tick(_FPS)
 
     def _render_ansi(self) -> str:
-        """Return a text representation of the farm grid.
-
-        Returns:
-            Multi-line string showing the grid, drone, and status.
-        """
         gs = self.config.grid_size
         symbols = {0.0: ".", 1.0: "X", 2.0: "T"}
         lines = []
@@ -475,7 +439,7 @@ class CropTreatmentEnv(gym.Env):
             lines.append(row)
         grid_str = "\n".join(lines)
         grid_str += (
-            f"\nDrone pos: {self._drone_pos}  "
+            f"\nDrone pos: ({int(self._drone_pos[0])},{int(self._drone_pos[1])})  "
             f"Pesticide: {self._pesticide}  "
             f"Step: {self._step_count}"
         )

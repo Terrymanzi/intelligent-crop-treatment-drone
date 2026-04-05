@@ -6,22 +6,25 @@ code duplication.
 
 from __future__ import annotations
 
+import csv
 import os
+from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.monitor import Monitor
 
-from environment.unity_env_wrapper import make_env
+from environment.env_wrapper import make_env
 from environment.config import EnvConfig
 
 # Project root paths
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = PROJECT_ROOT / "models"
 LOG_DIR = PROJECT_ROOT / "results" / "logs"
+RESULTS_DIR = PROJECT_ROOT / "results"
 
 
 def get_env(config: Optional[EnvConfig] = None, **kwargs) -> Monitor:
@@ -125,3 +128,84 @@ class TensorBoardLogCallback(BaseCallback):
             if "pesticide_remaining" in info:
                 self.logger.record("env/pesticide_remaining", info["pesticide_remaining"])
         return True
+
+
+def save_training_results_csv(
+    model,
+    algo_name: str,
+    total_timesteps: int,
+    hyperparams: Dict[str, Any],
+    n_eval_episodes: int = 20,
+) -> None:
+    """Evaluate a trained SB3 model and append results to a shared CSV file.
+
+    Runs deterministic evaluation episodes and records mean reward,
+    crops treated, episode length, and treatment accuracy.
+
+    Args:
+        model: Trained Stable Baselines3 model.
+        algo_name: Algorithm identifier (e.g. 'ppo', 'dqn').
+        total_timesteps: Total training timesteps used.
+        hyperparams: Dictionary of hyperparameters used for training.
+        n_eval_episodes: Number of evaluation episodes to run.
+    """
+    config = EnvConfig()
+    eval_env = get_env(config=config)
+
+    rewards = []
+    treated_counts = []
+    lengths = []
+
+    for _ in range(n_eval_episodes):
+        obs, info = eval_env.reset()
+        ep_reward = 0.0
+        steps = 0
+        done = False
+        while not done:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = eval_env.step(action)
+            ep_reward += reward
+            steps += 1
+            done = terminated or truncated
+        rewards.append(ep_reward)
+        treated_counts.append(info.get("crops_treated", 0))
+        lengths.append(steps)
+
+    eval_env.close()
+
+    os.makedirs(str(RESULTS_DIR), exist_ok=True)
+    csv_path = RESULTS_DIR / "training_results.csv"
+    file_exists = csv_path.exists()
+
+    total_unhealthy = int(config.num_crops * config.unhealthy_ratio)
+    accuracy = (np.mean(treated_counts) / total_unhealthy * 100) if total_unhealthy > 0 else 0
+
+    # Filter out non-serialisable values from hyperparams
+    hp_str = "; ".join(
+        f"{k}={v}" for k, v in hyperparams.items()
+        if not callable(v) and k != "policy_kwargs"
+    )
+
+    with open(csv_path, "a", newline="") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow([
+                "algorithm", "timestamp", "total_timesteps",
+                "mean_reward", "std_reward", "mean_crops_treated",
+                "mean_episode_length", "best_reward",
+                "treatment_accuracy_pct", "hyperparameters",
+            ])
+        writer.writerow([
+            algo_name,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            total_timesteps,
+            f"{np.mean(rewards):.2f}",
+            f"{np.std(rewards):.2f}",
+            f"{np.mean(treated_counts):.1f}",
+            f"{np.mean(lengths):.1f}",
+            f"{np.max(rewards):.2f}",
+            f"{accuracy:.1f}",
+            hp_str,
+        ])
+
+    print(f"[{algo_name.upper()}] Results appended to {csv_path}")

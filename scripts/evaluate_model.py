@@ -24,9 +24,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from stable_baselines3 import DQN, PPO, A2C
 
-from environment.unity_env_wrapper import make_env
+from environment.env_wrapper import make_env
 from environment.config import EnvConfig
-from training.reinforce_training import PolicyNetwork
+from training.reinforce_training import PolicyNetwork, HYPERPARAMS as REINFORCE_HP
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = PROJECT_ROOT / "models"
@@ -105,6 +105,7 @@ def evaluate_reinforce_model(
     policy = PolicyNetwork(
         obs_size=config.observation_size,
         n_actions=config.num_actions,
+        hidden_size=REINFORCE_HP["hidden_size"],
     )
     policy.load_state_dict(torch.load(model_path, weights_only=True))
     policy.eval()
