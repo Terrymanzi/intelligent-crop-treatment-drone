@@ -88,16 +88,36 @@ Train any of the four RL algorithms. All scripts use optimised hyperparameters b
 
 ```bash
 # PPO (recommended — best performance with vectorized environments)
-python -m training.ppo_training --timesteps 500000
+python -m training.ppo_training
 
 # A2C (fast training with parallel environments)
-python -m training.a2c_training --timesteps 500000
+python -m training.a2c_training
 
 # DQN (off-policy with experience replay)
-python -m training.dqn_training --timesteps 500000
+python -m training.dqn_training
 
 # REINFORCE (custom PyTorch vanilla policy gradient)
 python -m training.reinforce_training --episodes 5000
+```
+
+## experimentation with hyperparameters
+
+Train any of the four RL algorithms experiments in one go or one by one.
+
+```bash
+# Run everything (32 experiments)
+python experiments.py
+
+# Run one algorithm only
+python experiments.py --algo ppo
+python experiments.py --algo reinforce
+python experiments.py --algo a2c
+python experiments.py --algo dqn
+
+# Run a specific experiment
+python experiments.py --algo ppo --exp 3
+# Dry run — print configs without training
+python experiments.py --dry-run
 ```
 
 All training scripts support these flags:
@@ -117,18 +137,18 @@ Then open http://localhost:6006 in your browser.
 
 After training, results are automatically appended to `results/training_results.csv` with the following columns:
 
-| Column | Description |
-|--------|-------------|
-| algorithm | Algorithm name (ppo, dqn, a2c, reinforce) |
-| timestamp | When training completed |
-| total_timesteps | Training duration |
-| mean_reward | Average evaluation reward |
-| std_reward | Reward standard deviation |
-| mean_crops_treated | Average number of sick crops treated |
-| mean_episode_length | Average steps per episode |
-| best_reward | Highest reward across evaluation episodes |
+| Column                 | Description                                        |
+| ---------------------- | -------------------------------------------------- |
+| algorithm              | Algorithm name (ppo, dqn, a2c, reinforce)          |
+| timestamp              | When training completed                            |
+| total_timesteps        | Training duration                                  |
+| mean_reward            | Average evaluation reward                          |
+| std_reward             | Reward standard deviation                          |
+| mean_crops_treated     | Average number of sick crops treated               |
+| mean_episode_length    | Average steps per episode                          |
+| best_reward            | Highest reward across evaluation episodes          |
 | treatment_accuracy_pct | Percentage of unhealthy crops successfully treated |
-| hyperparameters | Key hyperparameters used |
+| hyperparameters        | Key hyperparameters used                           |
 
 ### 5. Evaluate a Trained Model
 
@@ -153,33 +173,34 @@ A 5x5 grid (25 cells) where approximately 30% of crops start as unhealthy. The d
 
 ### Observation Space (29-dimensional vector)
 
-| Index | Description |
-|-------|-------------|
-| 0-2 | Drone position (x, y, z) |
-| 3 | Remaining pesticide |
-| 4-28 | Crop health states (0=healthy, 1=unhealthy, 2=treated) |
+| Index | Description                                            |
+| ----- | ------------------------------------------------------ |
+| 0-2   | Drone position (x, y, z)                               |
+| 3     | Remaining pesticide                                    |
+| 4-28  | Crop health states (0=healthy, 1=unhealthy, 2=treated) |
 
 ### Action Space (7 discrete actions)
 
-| Action | Description |
-|--------|-------------|
-| 0-1 | Move along x-axis (+/-) |
-| 2-3 | Move along y-axis (+/-) |
-| 4-5 | Move along z-axis (+/-) |
-| 6 | Spray pesticide |
+| Action | Description             |
+| ------ | ----------------------- |
+| 0-1    | Move along x-axis (+/-) |
+| 2-3    | Move along y-axis (+/-) |
+| 4-5    | Move along z-axis (+/-) |
+| 6      | Spray pesticide         |
 
 ### Reward Structure
 
-| Event | Reward |
-|-------|--------|
-| Each step | -0.1 (encourages efficiency) |
-| Spray unhealthy crop | +10.0 |
-| Spray healthy/treated crop | -5.0 |
-| All unhealthy crops treated | +50.0 (completion bonus) |
+| Event                       | Reward                       |
+| --------------------------- | ---------------------------- |
+| Each step                   | -0.1 (encourages efficiency) |
+| Spray unhealthy crop        | +10.0                        |
+| Spray healthy/treated crop  | -5.0                         |
+| All unhealthy crops treated | +50.0 (completion bonus)     |
 
 ## Optimised Hyperparameters
 
 ### PPO
+
 - **Network**: 256x256 (policy & value)
 - **Learning rate**: 2.5e-4, **Batch size**: 256, **n_steps**: 2048
 - **Epochs**: 15, **Gamma**: 0.995, **GAE lambda**: 0.95
@@ -187,6 +208,7 @@ A 5x5 grid (25 cells) where approximately 30% of crops start as unhealthy. The d
 - **Parallel environments**: 8
 
 ### A2C
+
 - **Network**: 256x256 (policy & value)
 - **Learning rate**: 7e-4, **n_steps**: 256
 - **Gamma**: 0.995, **GAE lambda**: 0.95
@@ -194,6 +216,7 @@ A 5x5 grid (25 cells) where approximately 30% of crops start as unhealthy. The d
 - **Parallel environments**: 8
 
 ### DQN
+
 - **Network**: 256x256
 - **Learning rate**: 5e-4, **Batch size**: 128
 - **Buffer size**: 100K, **Learning starts**: 5000
@@ -201,6 +224,7 @@ A 5x5 grid (25 cells) where approximately 30% of crops start as unhealthy. The d
 - **Exploration**: 30% of training, final epsilon 0.02
 
 ### REINFORCE
+
 - **Network**: 256x256
 - **Learning rate**: 5e-4, **Gamma**: 0.995
 - **Entropy bonus**: 0.01, **Gradient clipping**: 0.5
