@@ -13,6 +13,7 @@ import argparse
 import os
 
 from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
 
 from training.utils import (
     LOG_DIR,
@@ -25,13 +26,13 @@ from training.utils import (
 # ---- Hyperparameters ----
 HYPERPARAMS = {
     "learning_rate": 3e-4,
-    "n_steps": 2048,
-    "batch_size": 64,
+    "n_steps": 4096,
+    "batch_size": 128,
     "n_epochs": 10,
     "gamma": 0.99,
     "gae_lambda": 0.95,
     "clip_range": 0.2,
-    "ent_coef": 0.01,
+    "ent_coef": 0.02,
     "vf_coef": 0.5,
     "max_grad_norm": 0.5,
 }
@@ -53,7 +54,7 @@ def train(
     Returns:
         The trained PPO model.
     """
-    env = get_env()
+    env = make_vec_env(get_env, n_envs=8)
     log_path = str(LOG_DIR / ALGO_NAME)
     os.makedirs(log_path, exist_ok=True)
 

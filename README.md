@@ -89,7 +89,7 @@ Train any of the four RL algorithms:
 
 ```bash
 # DQN
-python -m training.dqn_training --timesteps 500000
+python -m training.dqn_training --timesteps 1000000
 
 # PPO (my best ideal training strategy)
 # increase up to least "2M timesteps"
@@ -100,7 +100,7 @@ python -m training.dqn_training --timesteps 500000
 python -m training.ppo_training --timesteps 2000000
 
 # A2C
-python -m training.a2c_training --timesteps 500000
+python -m training.a2c_training --timesteps 3000000
 
 # REINFORCE
 python -m training.reinforce_training --episodes 5000

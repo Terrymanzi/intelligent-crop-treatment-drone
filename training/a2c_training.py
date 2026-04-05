@@ -13,6 +13,7 @@ import argparse
 import os
 
 from stable_baselines3 import A2C
+from stable_baselines3.common.env_util import make_vec_env
 
 from training.utils import (
     LOG_DIR,
@@ -24,12 +25,12 @@ from training.utils import (
 
 # ---- Hyperparameters ----
 HYPERPARAMS = {
-    "learning_rate": 7e-4,
-    "n_steps": 5,
+    "learning_rate": 3e-4,
+    "n_steps": 50,
     "gamma": 0.99,
     "gae_lambda": 1.0,
-    "ent_coef": 0.01,
-    "vf_coef": 0.25,
+    "ent_coef": 0.02,
+    "vf_coef": 0.5,
     "max_grad_norm": 0.5,
     "normalize_advantage": True,
 }
@@ -51,7 +52,7 @@ def train(
     Returns:
         The trained A2C model.
     """
-    env = get_env()
+    env = make_vec_env(get_env, n_envs=8)
     log_path = str(LOG_DIR / ALGO_NAME)
     os.makedirs(log_path, exist_ok=True)
 

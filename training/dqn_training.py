@@ -25,14 +25,14 @@ from training.utils import (
 # ---- Hyperparameters ----
 HYPERPARAMS = {
     "learning_rate": 1e-3,
-    "buffer_size": 50_000,
-    "learning_starts": 1000,
+    "buffer_size": 200_000,
+    "learning_starts": 10000,
     "batch_size": 64,
-    "tau": 0.005,
+    # "tau": 0.005, not needed, redundant!
     "gamma": 0.99,
     "train_freq": 4,
     "target_update_interval": 1000,
-    "exploration_fraction": 0.3,
+    "exploration_fraction": 0.5,
     "exploration_initial_eps": 1.0,
     "exploration_final_eps": 0.05,
 }
