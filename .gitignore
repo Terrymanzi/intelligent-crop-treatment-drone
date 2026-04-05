@@ -62,6 +62,6 @@ Thumbs.db
 # /scripts
 # /training
 /unity_project
-logs/*.tfevents.*
-logs/*
-/logs
+# logs/*.tfevents.*
+# logs/*
+# /logs
