@@ -62,4 +62,4 @@ Thumbs.db
 # /scripts
 # /training
 /unity_project
-/logs
+/logs/ppo_08*
