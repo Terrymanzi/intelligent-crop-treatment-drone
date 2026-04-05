@@ -1,5 +1,6 @@
 # Intelligent Crop Treatment Drone using Reinforcement Learning
 
+![Crop Treatment Drone on a 2D Farm Demo](./Drone-2D-Simulation.gif)
 A reinforcement learning system where a drone agent navigates a farm grid environment, identifies unhealthy (sick) crops, and applies pesticide treatment efficiently. The project implements four RL algorithms with optimised hyperparameters and uses a Gymnasium-compatible Pygame-based 2D simulation.
 
 ## Features
