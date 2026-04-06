@@ -266,6 +266,80 @@ Observations are normalised to [0, 1].
 - **Entropy bonus**: 0.05, **Gradient clipping**: 0.5
 - **Episodes**: 10,000
 
+## Training Results
+
+Full sweep results are logged to `results/sweep_results.csv`. All experiments use a 100-step episode limit and are evaluated over multiple episodes post-training.
+
+### A2C (8 experiments — 2026-04-01)
+
+| Experiment | Timesteps | Envs | Mean Reward | Std | Crops Treated | Best Reward | Accuracy % | Time (min) |
+|---|---|---|---|---|---|---|---|---|
+| a2c_01_baseline | 2,000,000 | 8 | 16.15 | 22.05 | 1.8 | 60.40 | 14.6 | 18.9 |
+| a2c_02_lr_low | 2,000,000 | 8 | 21.42 | 22.13 | 2.6 | 51.70 | 21.7 | 19.3 |
+| a2c_03_lr_high | 2,000,000 | 8 | 15.73 | 16.25 | 1.8 | 53.70 | 14.6 | 17.4 |
+| a2c_04_high_entropy | 2,000,000 | 8 | **28.26** | 12.24 | 2.5 | 54.10 | 20.4 | 16.3 |
+| a2c_05_low_entropy | 3,000,000 | 8 | 19.09 | 18.33 | 1.9 | 49.40 | 16.2 | 27.4 |
+| a2c_06_short_rollout_16env | 2,000,000 | 16 | 24.00 | 13.74 | **3.0** | 47.20 | **24.6** | 14.2 |
+| a2c_07_big_network | 2,000,000 | 8 | 15.33 | 18.96 | 1.8 | 45.70 | 15.0 | 20.3 |
+| a2c_08_aggressive | 5,000,000 | 16 | 22.38 | 17.99 | 2.8 | **60.50** | 22.9 | 42.9 |
+
+Key hyperparameters varied: learning rate (`0.0003`–`0.001`), entropy coef (`0.02`–`0.1`), n_envs (`8`/`16`), n_steps (`128`/`256`), network size.
+
+### PPO (8 experiments — 2026-04-02)
+
+| Experiment | Timesteps | Envs | Mean Reward | Std | Crops Treated | Best Reward | Accuracy % | Time (min) |
+|---|---|---|---|---|---|---|---|---|
+| ppo_01_baseline | 2,000,000 | 8 | 45.13 | 27.84 | 3.8 | 99.60 | 31.7 | 27.8 |
+| ppo_02_lr_high | 2,000,000 | 8 | **62.03** | 22.89 | **5.0** | **123.60** | **41.7** | 39.1 |
+| ppo_03_lr_low_long | 3,000,000 | 8 | 37.96 | 23.33 | 3.4 | 82.90 | 27.9 | 61.6 |
+| ppo_04_high_entropy | 2,000,000 | 8 | 41.73 | 17.99 | 3.5 | 76.00 | 29.2 | 42.4 |
+| ppo_05_low_entropy_exploit | 3,000,000 | 8 | 59.70 | 25.90 | 4.6 | 117.70 | 38.3 | 47.3 |
+| ppo_06_big_network | 2,000,000 | 8 | 51.03 | 21.21 | 4.2 | 98.60 | 35.4 | 52.3 |
+| ppo_07_short_rollout_16env | 2,000,000 | 16 | 31.02 | 14.80 | 3.0 | 72.30 | 25.4 | 34.8 |
+| ppo_08_aggressive | 5,000,000 | 16 | 47.92 | 14.59 | 4.0 | 68.10 | 32.9 | 107.4 |
+
+Key hyperparameters varied: learning rate (`0.0001`–`0.0005`), entropy coef (`0.02`–`0.1`), clip range (`0.15`/`0.2`), n_envs (`8`/`16`), network size.
+
+### REINFORCE (8 experiments — 2026-04-03)
+
+| Experiment | Episodes | Mean Reward | Std | Crops Treated | Best Reward | Accuracy % | Time (min) |
+|---|---|---|---|---|---|---|---|
+| reinforce_01_baseline | 15,000 | 43.74 | 29.57 | 5.2 | 117.20 | 43.8 | 65.7 |
+| reinforce_02_lr_low_long | 30,000 | 49.48 | 24.29 | 5.7 | 95.50 | 47.1 | 135.0 |
+| reinforce_03_lr_high | 15,000 | 44.95 | 22.10 | 4.8 | 94.20 | 39.6 | 41.4 |
+| reinforce_04_high_entropy | 20,000 | 57.07 | 24.46 | **5.7** | 110.20 | **47.1** | 65.5 |
+| reinforce_05_low_entropy_exploit | 30,000 | 47.97 | 21.02 | 4.8 | 87.70 | 40.0 | 75.7 |
+| reinforce_06_big_network | 20,000 | 55.16 | 18.96 | 5.2 | 94.50 | 43.3 | 46.7 |
+| reinforce_07_high_gamma | 20,000 | 52.14 | 21.24 | 5.4 | 101.50 | 45.0 | 42.1 |
+| reinforce_08_aggressive | 50,000 | **62.47** | 25.33 | **6.2** | 115.20 | **52.1** | 104.5 |
+
+Key hyperparameters varied: learning rate (`0.0002`–`0.001`), entropy coef (`0.02`–`0.1`), hidden size (`256`/`512`), gamma (`0.99`/`0.995`), episodes (`15K`–`50K`).
+
+### DQN (7 experiments — 2026-04-05/06)
+
+| Experiment | Timesteps | Mean Reward | Std | Crops Treated | Best Reward | Accuracy % | Time (min) |
+|---|---|---|---|---|---|---|---|
+| dqn_01_baseline | 2,000,000 | 3.52 | 7.83 | 0.5 | 19.50 | 4.2 | 35.9 |
+| dqn_02_lr_low_stable | 3,000,000 | **28.92** | 12.63 | **1.9** | **49.30** | **15.4** | 54.7 |
+| dqn_03_soft_update | 2,000,000 | -4.63 | 0.33 | 0.0 | -4.10 | 0.0 | 84.1 |
+| dqn_04_long_explore | 3,000,000 | 12.82 | 11.69 | 0.7 | 33.80 | 5.8 | 52.9 |
+| dqn_05_frequent_train | 2,000,000 | -4.24 | 3.20 | 0.1 | 9.70 | 0.4 | 126.4 |
+| dqn_06_big_network | 2,000,000 | 6.52 | 10.26 | 0.6 | 34.70 | 5.0 | 124.2 |
+| dqn_07_high_gamma | 3,000,000 | 7.67 | 9.38 | 0.7 | 20.30 | 5.8 | 53.9 |
+
+Key hyperparameters varied: learning rate (`0.0001`–`0.0005`), buffer size (`100K`–`200K`), tau (`0.005`/`1.0`), exploration fraction (`0.4`–`0.7`), train frequency.
+
+### Cross-Algorithm Summary
+
+| Algorithm | Best Experiment | Best Mean Reward | Best Accuracy % | Best Crops Treated |
+|---|---|---|---|---|
+| PPO | ppo_02_lr_high | **62.03** | **41.7** | **5.0** |
+| REINFORCE | reinforce_08_aggressive | 62.47 | 52.1 | 6.2 |
+| A2C | a2c_04_high_entropy | 28.26 | 24.6 | 3.0 |
+| DQN | dqn_02_lr_low_stable | 28.92 | 15.4 | 1.9 |
+
+> REINFORCE achieves the highest accuracy and crops treated per episode, while PPO delivers the best mean reward with lower variance. DQN underperforms significantly on this task, likely due to the dense reward structure and multi-step decision horizon favouring on-policy methods.
+
 ## Future Improvements
 
 - Complete Unity 3D environment with realistic farm terrain and drone physics
